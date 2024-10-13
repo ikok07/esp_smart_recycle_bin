@@ -17,8 +17,11 @@
 #define PWM_APP_SERVO_OPEN_DEGREES    90
 #define PWM_APP_SERVO_CLOSE_DEGREES   0
 
+#include <freertos/FreeRTOS.h>
+
 typedef enum {
-    PWM_APP_MSG_TOGGLE_SERVO
+    PWM_APP_MSG_OPEN_SERVO,
+    PWM_APP_MSG_CLOSE_SERVO
 } pwm_app_msg_e;
 
 typedef struct {
@@ -27,7 +30,8 @@ typedef struct {
 
 void pwm_init();
 
-void pwm_app_set_servo_angle(int angle);
-
 void pwm_app_send_message(pwm_app_msg_e msgID);
+
+bool pwm_app_get_servo_open();
+
 #endif //PWM_APP_H

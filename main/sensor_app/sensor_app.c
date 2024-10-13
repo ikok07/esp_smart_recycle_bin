@@ -9,11 +9,31 @@
 #include <freertos/FreeRTOS.h>
 #include <driver/gpio.h>
 #include <driver/i2c_master.h>
+#include <pwm_app/pwm_app.h>
 
 static const char TAG[] = "sensor_app";
 
 i2c_master_bus_handle_t sensor_app_i2c_bus_handle;
 i2c_master_dev_handle_t sensor_app_i2c_device_handle;
+
+static void sensor_app_task() {
+    esp_err_t err;
+    while (1) {
+        if ((err = sensor_app_check_connection()) != ESP_OK) {
+            ESP_LOGE(TAG, "Sensor is not connected! Setting servo to closed position!");
+            pwm_app_send_message(PWM_APP_MSG_CLOSE_SERVO);
+            continue;
+        }
+        uint8_t distance;
+        if ((err = sensor_app_receive_data(&distance)) != ESP_OK) {
+            ESP_LOGE(TAG, "Could not fetch data from sensor! Setting servo to closed position!");
+            pwm_app_send_message(PWM_APP_MSG_CLOSE_SERVO);
+            continue;
+        }
+        if (distance < SENSOR_OPEN_DISTANCE) pwm_app_send_message(PWM_APP_MSG_OPEN_SERVO);
+        else pwm_app_send_message(PWM_APP_MSG_CLOSE_SERVO);
+    }
+}
 
 static void sensor_app_i2c_configure_bus() {
     ESP_LOGI(TAG, "Configuring I2C Master Bus");
@@ -23,7 +43,7 @@ static void sensor_app_i2c_configure_bus() {
         .scl_io_num = SENSOR_SCL_GPIO,
         .clk_source = I2C_CLK_SRC_APB, // prevent system from changing APB freq before going into light sleed mode,
         .glitch_ignore_cnt = 7, // increase if data is unstable
-        .flags = {.enable_internal_pullup = false} // Pull up should be from external resistor
+        .flags = {.enable_internal_pullup = true} // Pull up should be from external resistor
     };
     ESP_ERROR_CHECK(i2c_new_master_bus(&bus_config, &sensor_app_i2c_bus_handle));
 }
@@ -47,6 +67,16 @@ void sensor_app_init() {
 
     // Configure device
     sensor_app_i2c_configure_device();
+
+    xTaskCreatePinnedToCore(
+        sensor_app_task,
+        "sensor_app_task",
+        SENSOR_APP_TASK_STACK_SIZE,
+        NULL,
+        SENSOR_APP_TASK_PRIORITY,
+        NULL,
+        SENSOR_APP_TASK_CORE_ID
+    );
 
     ESP_LOGI(TAG, "Sensor application initialized");
 }

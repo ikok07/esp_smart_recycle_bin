@@ -25,6 +25,8 @@ static EventGroupHandle_t pwm_app_event_group;
 
 static uint8_t PWM_APP_SERVO_POS_OPEN       = BIT0;
 
+static void pwm_app_set_servo_angle(int angle);
+
 static void pwm_app_message_task(void *pvParams) {
     pwm_app_message_t msg;
     EventBits_t event_bits;
@@ -32,19 +34,12 @@ static void pwm_app_message_task(void *pvParams) {
     while (1) {
         if (xQueueReceive(pwm_app_msg_queue, &msg, portMAX_DELAY)) {
             switch (msg.msgID) {
-                case PWM_APP_MSG_TOGGLE_SERVO:
-                    event_bits = xEventGroupGetBits(pwm_app_event_group);
-                    if (event_bits & PWM_APP_SERVO_POS_OPEN) {
-                        xEventGroupClearBits(pwm_app_event_group, PWM_APP_SERVO_POS_OPEN);
-                        pwm_app_set_servo_angle(PWM_APP_SERVO_CLOSE_DEGREES);
-                        ESP_LOGI(TAG, "Servo position: CLOSE");
-                    } else {
-                        xEventGroupSetBits(pwm_app_event_group, PWM_APP_SERVO_POS_OPEN);
-                        pwm_app_set_servo_angle(PWM_APP_SERVO_OPEN_DEGREES);
-                        ESP_LOGI(TAG, "Servo position: OPEN");
-                    }
-
-                break;
+                case PWM_APP_MSG_OPEN_SERVO:
+                    xEventGroupSetBits(pwm_app_event_group, PWM_APP_SERVO_POS_OPEN);
+                    pwm_app_set_servo_angle(PWM_APP_SERVO_OPEN_DEGREES);
+                case PWM_APP_MSG_CLOSE_SERVO:
+                    xEventGroupClearBits(pwm_app_event_group, PWM_APP_SERVO_POS_OPEN);
+                    pwm_app_set_servo_angle(PWM_APP_SERVO_CLOSE_DEGREES);
                 default:
                     ESP_LOGE(TAG, "Invalid PWM message sent!");
             }
@@ -93,6 +88,13 @@ static void pwm_app_setup_components() {
     ESP_ERROR_CHECK(mcpwm_new_generator(mcpwm_operator, &generator_config, &mcpwm_generator));
 }
 
+static void pwm_app_set_servo_angle(const int angle) {
+    const esp_err_t err = mcpwm_comparator_set_compare_value(mcpwm_comparator, angle_to_compare_value(angle));
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set servo angle! Error: %s", esp_err_to_name(err));
+    }
+}
+
 void pwm_init() {
     ESP_LOGI(TAG, "Initializing PWM Application");
 
@@ -125,14 +127,12 @@ void pwm_init() {
     );
 }
 
-void pwm_app_set_servo_angle(const int angle) {
-    const esp_err_t err = mcpwm_comparator_set_compare_value(mcpwm_comparator, angle_to_compare_value(angle));
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to set servo angle! Error: %s", esp_err_to_name(err));
-    }
-}
-
 void pwm_app_send_message(const pwm_app_msg_e msgID) {
     const pwm_app_message_t msg = {.msgID = msgID};
     xQueueSend(pwm_app_msg_queue, &msg, portMAX_DELAY);
+}
+
+bool pwm_app_get_servo_open() {
+    const EventBits_t event_bits = xEventGroupGetBits(pwm_app_event_group);
+    return event_bits & PWM_APP_SERVO_POS_OPEN;
 }

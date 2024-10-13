@@ -5,12 +5,12 @@
 #ifndef SENSOR_APP_H
 #define SENSOR_APP_H
 
-#define SENSOR_GPIO                 16
-
 #define SENSOR_SDA_GPIO             18
 #define SENSOR_SCL_GPIO             19
 #define SENSOR_I2C_ADDR             0x52
 #define SENSOR_i2C_SCL_FREQ_HZ      100000
+
+#define SENSOR_OPEN_DISTANCE        10
 
 #include <esp_err.h>
 
