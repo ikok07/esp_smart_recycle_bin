@@ -29,7 +29,6 @@ static void pwm_app_set_servo_angle(int angle);
 
 static void pwm_app_message_task(void *pvParams) {
     pwm_app_message_t msg;
-    EventBits_t event_bits;
 
     while (1) {
         if (xQueueReceive(pwm_app_msg_queue, &msg, portMAX_DELAY)) {
@@ -37,9 +36,11 @@ static void pwm_app_message_task(void *pvParams) {
                 case PWM_APP_MSG_OPEN_SERVO:
                     xEventGroupSetBits(pwm_app_event_group, PWM_APP_SERVO_POS_OPEN);
                     pwm_app_set_servo_angle(PWM_APP_SERVO_OPEN_DEGREES);
+                    break;
                 case PWM_APP_MSG_CLOSE_SERVO:
                     xEventGroupClearBits(pwm_app_event_group, PWM_APP_SERVO_POS_OPEN);
                     pwm_app_set_servo_angle(PWM_APP_SERVO_CLOSE_DEGREES);
+                    break;
                 default:
                     ESP_LOGE(TAG, "Invalid PWM message sent!");
             }
@@ -114,6 +115,10 @@ void pwm_init() {
     ESP_LOGI(TAG, "PWM Application initialized");
 
     pwm_app_msg_queue = xQueueCreate(3, sizeof(pwm_app_message_t));
+    if (pwm_app_msg_queue == NULL) {
+        ESP_LOGE(TAG, "Failed to create message queue! Halting system and waiting for restart...");
+        while (1);
+    }
     pwm_app_event_group = xEventGroupCreate();
 
     xTaskCreatePinnedToCore(

@@ -22,6 +22,7 @@ static void sensor_app_task() {
         if ((err = sensor_app_check_connection()) != ESP_OK) {
             ESP_LOGE(TAG, "Sensor is not connected! Setting servo to closed position!");
             pwm_app_send_message(PWM_APP_MSG_CLOSE_SERVO);
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
             continue;
         }
         uint8_t distance;
