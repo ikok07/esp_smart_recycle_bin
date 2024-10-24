@@ -5,16 +5,26 @@
 #include "sensor_app.h"
 
 #include <esp_log.h>
-#include <tasks.h>
 #include <freertos/FreeRTOS.h>
 #include <driver/gpio.h>
 #include <driver/i2c_master.h>
 #include <pwm_app/pwm_app.h>
 
+#include "tasks.h"
+// #include "vl53l0x_api.h"
+
 static const char TAG[] = "sensor_app";
 
 i2c_master_bus_handle_t sensor_app_i2c_bus_handle;
 i2c_master_dev_handle_t sensor_app_i2c_device_handle;
+
+static esp_err_t sensor_app_i2c_write(const uint8_t reg_addr, const uint8_t data) {
+    const sensor_app_write_data_t write_data = {
+        .reg_addr = reg_addr,
+        .data = data
+    };
+    return i2c_master_transmit(sensor_app_i2c_device_handle, &write_data.data, sizeof(uint8_t), portMAX_DELAY);
+}
 
 static void sensor_app_task() {
     esp_err_t err;
@@ -31,7 +41,7 @@ static void sensor_app_task() {
             pwm_app_send_message(PWM_APP_MSG_CLOSE_SERVO);
             continue;
         }
-        if (distance < SENSOR_OPEN_DISTANCE) pwm_app_send_message(PWM_APP_MSG_OPEN_SERVO);
+        if (distance < SENSOR_OPEN_DISTANCE_MM) pwm_app_send_message(PWM_APP_MSG_OPEN_SERVO);
         else pwm_app_send_message(PWM_APP_MSG_CLOSE_SERVO);
     }
 }
@@ -58,6 +68,26 @@ static void sensor_app_i2c_configure_device() {
         .scl_wait_us = 0
     };
     ESP_ERROR_CHECK(i2c_master_bus_add_device(sensor_app_i2c_bus_handle, &device_config, &sensor_app_i2c_device_handle));
+
+    while (sensor_app_check_connection() != ESP_OK) {
+        ESP_LOGE(TAG, "Sensor is not connected! Waiting for connection...");
+        vTaskDelay(10);
+    }
+
+    // Enable 2V8 mode
+    ESP_ERROR_CHECK(sensor_app_i2c_write(VL53L0X_REG_VHV_CONFIG_PAD_SCL_SDA__EXTSUP_HV, SENSOR_APP_POWER_2V8));
+
+    // Set the sensor's range mode
+    ESP_ERROR_CHECK(sensor_app_i2c_write(VL53L0X_REG_SYSRANGE_START, SENSOR_APP_SENSOR_MODE_CONTIUOUS));
+
+    // Enable GPIO Interrupt when value is below threshold
+    ESP_ERROR_CHECK(sensor_app_i2c_write(VL53L0X_REG_SYSTEM_INTERRUPT_CONFIG_GPIO, SENSOR_APP_GPIO_INTR_LEVEL_LOW));
+
+    // Set GPIO output to LOW on interrupt
+    ESP_ERROR_CHECK(sensor_app_i2c_write(VL53L0X_REG_GPIO_HV_MUX_ACTIVE_HIGH, SENSOR_APP_ACTIVE_STATE_LOW));
+
+    // Set the threshold
+    ESP_ERROR_CHECK(sensor_app_i2c_write(VL53L0X_REG_SYSTEM_THRESH_LOW, SENSOR_OPEN_DISTANCE_MM));
 }
 
 void sensor_app_init() {
@@ -89,3 +119,35 @@ esp_err_t sensor_app_check_connection() {
 esp_err_t sensor_app_receive_data(uint8_t *data) {
     return i2c_master_receive(sensor_app_i2c_device_handle, data, sizeof(uint8_t), portMAX_DELAY);
 }
+
+// const VL53L0X_DEV dev = malloc(sizeof(VL53L0X_DEV));
+// dev->i2c_address = SENSOR_I2C_ADDR;
+// dev->i2c_port_num = I2C_NUM_0;
+// dev->scl_speed_hz = SENSOR_i2C_SCL_FREQ_HZ;
+// dev->scl_wait_us = 0;
+// dev->scl_gpio = SENSOR_SCL_GPIO;
+// dev->sda_gpio = SENSOR_SDA_GPIO;
+// dev->clk_src = I2C_CLK_SRC_APB;
+// dev->glitch_ignore_cnt = 7;
+// dev->enable_internal_pullup = true; // TODO: set to false for production
+//
+// VL53L0X_Error sensor_err = VL53L0X_DataInit(dev);
+// if (sensor_err != VL53L0X_ERROR_NONE) {
+//     ESP_LOGE(TAG, "Failed to initialize sensor! VL53L0X_DataInit");
+//     return;
+// }
+// sensor_err = VL53L0X_StaticInit(dev);
+// if (sensor_err != VL53L0X_ERROR_NONE) {
+//     ESP_LOGE(TAG, "Failed to initialize sensor! VL53L0X_StaticInit");
+//     return;
+// }
+// sensor_err = VL53L0X_SetOffsetCalibrationDataMicroMeter(dev, 0);
+// if (sensor_err != VL53L0X_ERROR_NONE) {
+//     ESP_LOGE(TAG, "Failed to initialize sensor! VL53L0X_SetOffsetCalibrationDataMicroMeter");
+//     return;
+// }
+// sensor_err = VL53L0X_StartMeasurement(dev);
+// if (sensor_err != VL53L0X_ERROR_NONE) {
+//     ESP_LOGE(TAG, "Failed to start sensor! VL53L0X_StartMeasurement");
+//     return;
+// }

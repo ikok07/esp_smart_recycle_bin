@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="Encoding">
-    <file url="file://$PROJECT_DIR$/lib/VL53L0X_1.0.4/Api/core/src/vl53l0x_api_core.c" charset="ISO-8859-1" />
+    <file url="file://$PROJECT_DIR$/docs/VL53L0X_1.0.4/Api/core/inc/vl53l0x_def.h" charset="ISO-8859-1" />
+    <file url="file://$PROJECT_DIR$/docs/VL53L0X_1.0.4/Api/core/src/vl53l0x_api_core.c" charset="ISO-8859-1" />
+    <file url="file://$PROJECT_DIR$/main/lib/vl53l0x/vl53l0x_api.h" charset="ISO-8859-1" />
+    <file url="file://$PROJECT_DIR$/main/lib/vl53l0x/vl53l0x_api.h" charset="ISO-8859-1" />
   </component>
 </project>
