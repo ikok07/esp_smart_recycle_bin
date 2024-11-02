@@ -5,26 +5,26 @@
 #ifndef SENSOR_APP_H
 #define SENSOR_APP_H
 
-#define SENSOR_SDA_GPIO                                 18
-#define SENSOR_SCL_GPIO                                 19
-#define SENSOR_I2C_ADDR                                 0x52
+#define SENSOR_SDA_GPIO                                 33
+#define SENSOR_SCL_GPIO                                 32
+#define SENSOR_I2C_WRITE_ADDR                           0x29
+#define SENSOR_I2C_READ_ADDR                            0x29
 #define SENSOR_i2C_SCL_FREQ_HZ                          100000
 #define SENSOR_OPEN_DISTANCE_MM                         250
 
 // Sensor Registers
 
+#define VL53L0X_REG_RESULT_RANGE_STATUS                 0x14        // Read the sensor's data
+
+#define VL53L0X_REG_IDENTIFICATION_MODEL_ID             0xC0        // Get model id
 #define VL53L0X_REG_VHV_CONFIG_PAD_SCL_SDA__EXTSUP_HV   0x89        // Sets 2V8 mode
 #define VL53L0X_REG_SYSRANGE_START                      0x00        // Set range mode
-#define VL53L0X_REG_SYSTEM_INTERRUPT_CONFIG_GPIO        0x000A      // Configure GPIO interrupt trigger
-#define VL53L0X_REG_GPIO_HV_MUX_ACTIVE_HIGH             0x0084      // Configure GPIO Output on interrupt trigger
+#define VL53L0X_REG_SYSTEM_INTERRUPT_CONFIG_GPIO        0x0A        // Configure GPIO interrupt trigger
+#define VL53L0X_REG_GPIO_HV_MUX_ACTIVE_HIGH             0x84        // Configure GPIO Output on interrupt trigger
 #define VL53L0X_REG_SYSTEM_THRESH_LOW                   0x0E        // Set the lower threshold
 
 #include <esp_err.h>
-
-typedef struct {
-    uint8_t reg_addr;
-    uint8_t data;
-} sensor_app_write_data_t;
+#include <stdbool.h>
 
 typedef enum {
     SENSOR_APP_POWER_1V6 = 0,                           // Standard mode (default) is used to supply from 1V6 to 1V9
@@ -52,8 +52,8 @@ typedef enum {
 
 void sensor_app_init();
 
-esp_err_t sensor_app_check_connection();
+esp_err_t sensor_app_check_connection(bool debugLogs);
 
-esp_err_t sensor_app_receive_data();
+esp_err_t sensor_app_receive_data(uint8_t reg_addr, uint8_t *data, size_t len, bool debugLogs);
 
 #endif //SENSOR_APP_H

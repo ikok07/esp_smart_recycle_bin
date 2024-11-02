@@ -9,5 +9,5 @@
 void app_main() {
     pwm_init();
     sensor_app_init();
-    power_app_init();
+    // power_app_init();
 }
