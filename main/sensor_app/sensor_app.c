@@ -13,43 +13,56 @@
 #include "tasks.h"
 #include "vl53l0x/vl53l0x.h"
 
-// TODO: Develop custom driver (ref: https://www.artfulbytes.com/vl53l0x-post)
-
 static const char TAG[] = "sensor_app";
+static vl53l0x_t *sensor_driver = NULL;
+static SemaphoreHandle_t sensor_isr_semaphone;
+
+static void i2c_scanner();
 
 static void sensor_app_task() {
     esp_err_t err;
     while (1) {
-        if ((err = vl53l0x_check_connection(false)) != ESP_OK) {
-            ESP_LOGE(TAG, "Sensor is not connected! Setting servo to closed position!");
-            pwm_app_send_message(PWM_APP_MSG_CLOSE_SERVO);
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
-            continue;
-        }
-        // uint8_t distance_data[2];
-        // if ((err = vl53l0x_i2c_read(VL53L0X_REG_RESULT_RANGE_STATUS, distance_data, sizeof(distance_data), false)) != ESP_OK) {
-        //     ESP_LOGE(TAG, "Could not fetch data from sensor! Setting servo to closed position!");
-        //     pwm_app_send_message(PWM_APP_MSG_CLOSE_SERVO);
-        //     continue;
-        // }
-        // uint16_t distance = (distance_data[0] << 8) | distance_data[1];
+        // const uint16_t distance = vl53l0x_readRangeSingleMillimeters(sensor_driver);
         // ESP_LOGI(TAG, "Distance: %d", distance);
         // if (distance < SENSOR_OPEN_DISTANCE_MM) pwm_app_send_message(PWM_APP_MSG_OPEN_SERVO);
         // else pwm_app_send_message(PWM_APP_MSG_CLOSE_SERVO);
-        // vTaskDelay(1000 / portTICK_PERIOD_MS);
+        if (xSemaphoreTake(sensor_isr_semaphone, portMAX_DELAY)) {
+            ESP_LOGI(TAG, "INTERRUPT TRIGGERED");
+        }
+        vTaskDelay(10);
     }
+}
+
+void isr_handler(void *arg) {
+    xSemaphoreGive(sensor_isr_semaphone);
 }
 
 void sensor_app_init() {
     ESP_LOGI(TAG, "Initializing sensor application");
+    sensor_driver = vl53l0x_config(I2C_NUM_0, SENSOR_SCL_GPIO, SENSOR_SDA_GPIO, -1, SENSOR_I2C_WRITE_ADDR, true);
+    if (sensor_driver == NULL) {
+        ESP_LOGE(TAG, "Failed to configure sensor's driver! The device is not connected!");
+        esp_restart();
+    }
+    // i2c_scanner();
+    const char *err_str = vl53l0x_init(sensor_driver);
+    if (err_str) {
+        ESP_LOGE(TAG, "Failed initialize sensor's driver! Error: %s", err_str);
+        while(1) {
+            vTaskDelay(10);
+        };
+        // esp_restart();
+    }
+    vl53l0x_startContinuous(sensor_driver, 0);
 
-    const vl53l0x_init_config_t init_config = {
-        .scl_gpio = SENSOR_SCL_GPIO,
-        .sda_gpio = SENSOR_SDA_GPIO,
-        .i2c_addr = SENSOR_I2C_WRITE_ADDR,
-        .i2c_freq_hz = SENSOR_i2C_SCL_FREQ_HZ
-    };
-    ESP_ERROR_CHECK(vl53l0x_init(init_config));
+    ESP_ERROR_CHECK(gpio_set_direction(SENSOR_INTR_GPIO, GPIO_MODE_INPUT));
+    ESP_ERROR_CHECK(gpio_set_intr_type(SENSOR_INTR_GPIO, GPIO_INTR_NEGEDGE));
+    ESP_ERROR_CHECK(gpio_set_pull_mode(SENSOR_INTR_GPIO, GPIO_PULLUP_ONLY));
+
+    gpio_install_isr_service(ESP_INTR_FLAG_LEVEL1);
+    gpio_isr_handler_add(SENSOR_INTR_GPIO, isr_handler, NULL);
+
+    sensor_isr_semaphone = xSemaphoreCreateBinary();
 
     xTaskCreatePinnedToCore(
         sensor_app_task,
@@ -64,34 +77,20 @@ void sensor_app_init() {
     ESP_LOGI(TAG, "Sensor application initialized");
 }
 
-// const VL53L0X_DEV dev = malloc(sizeof(VL53L0X_DEV));
-// dev->i2c_address = SENSOR_I2C_ADDR;
-// dev->i2c_port_num = I2C_NUM_0;
-// dev->scl_speed_hz = SENSOR_i2C_SCL_FREQ_HZ;
-// dev->scl_wait_us = 0;
-// dev->scl_gpio = SENSOR_SCL_GPIO;
-// dev->sda_gpio = SENSOR_SDA_GPIO;
-// dev->clk_src = I2C_CLK_SRC_APB;
-// dev->glitch_ignore_cnt = 7;
-// dev->enable_internal_pullup = true; // TODO: set to false for production
-//
-// VL53L0X_Error sensor_err = VL53L0X_DataInit(dev);
-// if (sensor_err != VL53L0X_ERROR_NONE) {
-//     ESP_LOGE(TAG, "Failed to initialize sensor! VL53L0X_DataInit");
-//     return;
-// }
-// sensor_err = VL53L0X_StaticInit(dev);
-// if (sensor_err != VL53L0X_ERROR_NONE) {
-//     ESP_LOGE(TAG, "Failed to initialize sensor! VL53L0X_StaticInit");
-//     return;
-// }
-// sensor_err = VL53L0X_SetOffsetCalibrationDataMicroMeter(dev, 0);
-// if (sensor_err != VL53L0X_ERROR_NONE) {
-//     ESP_LOGE(TAG, "Failed to initialize sensor! VL53L0X_SetOffsetCalibrationDataMicroMeter");
-//     return;
-// }
-// sensor_err = VL53L0X_StartMeasurement(dev);
-// if (sensor_err != VL53L0X_ERROR_NONE) {
-//     ESP_LOGE(TAG, "Failed to start sensor! VL53L0X_StartMeasurement");
-//     return;
-// }
+void i2c_scanner() {
+    i2c_cmd_handle_t cmd;
+    esp_err_t err;
+    ESP_LOGI(TAG, "Scanning...");
+    for (int i = 1; i < 127; i++) {
+        cmd = i2c_cmd_link_create();
+        i2c_master_start(cmd);
+        i2c_master_write_byte(cmd, (i << 1) | I2C_MASTER_WRITE, true);
+        i2c_master_stop(cmd);
+        err = i2c_master_cmd_begin(I2C_NUM_0, cmd, 1000 / portTICK_PERIOD_MS);
+        i2c_cmd_link_delete(cmd);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "Found device at 0x%02x", i);
+        }
+    }
+    printf("Scan complete.\n");
+}

@@ -7,7 +7,7 @@
 #include <sensor_app/sensor_app.h>
 
 void app_main() {
-    pwm_init();
+    // pwm_init();
     sensor_app_init();
     // power_app_init();
 }
